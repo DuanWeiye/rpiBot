@@ -26,12 +26,28 @@ void loop()
   {
      if (connectStatus == 0)
      {
+       int waitCount = 0;
        Serial.print("A");
-     
-       LedRGB(0,0,255);
-       delay(300);
-       LedRGB(0,0,0);
-       connectStatus = 1;
+       
+       while (waitCount < 3)
+       {
+         if (Serial.available()) 
+         {
+           buffer = Serial.read();
+           if (buffer == 'A')
+           {
+             LedRGB(0,0,255);
+             delay(300);
+             LedRGB(0,0,0);
+             connectStatus = 1;
+             return;
+           }
+         }
+         delay(100);
+         waitCount++;
+       }
+ 
+       LedFade(10);
      }
      
     if (Serial.available()) 
@@ -95,13 +111,13 @@ void LedFade(int fadeSpeed)
     analogWrite(LedGreenPin, fadeValue);
     delay(50);                            
   } 
-  delay(500);
+  delay(400);
   
   for(int fadeValue = 250 ; fadeValue >= 0; fadeValue -= fadeSpeed) { 
     analogWrite(LedGreenPin, fadeValue);
     delay(50);                          
   }
-  delay(500);
+  delay(800);
 }
 
 void LedRGB(int R, int G, int B)
