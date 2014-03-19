@@ -95,6 +95,10 @@ void loop()
          Serial.print("E");
        }
     }
+    else
+    {
+      //LedFade(5);
+    }
   }
   else
   {
@@ -108,12 +112,14 @@ void LedFade(int fadeSpeed)
   LedRGB(0,0,0);
   
   for(int fadeValue = 0; fadeValue <= 250; fadeValue += fadeSpeed) { 
+    if (Serial.available()) return;
     analogWrite(LedGreenPin, fadeValue);
     delay(50);                            
   } 
   delay(400);
   
   for(int fadeValue = 250 ; fadeValue >= 0; fadeValue -= fadeSpeed) { 
+    if (Serial.available()) return;
     analogWrite(LedGreenPin, fadeValue);
     delay(50);                          
   }
