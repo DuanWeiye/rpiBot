@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <fcntl.h>
 
 #define ARDUINO_DEVICE	"/dev/ttyUSB0"
 #define LCD_DEVICE 		"/dev/ttyAMA0"
@@ -32,9 +33,14 @@ int GetCurrentTime(char* text, int length);
 int initArduino();
 int GetHumAndTemp(int* humidity, int* temperature);
 
+float GetCPULoad();
+
 int main (void)
 {
 	if (wiringPiSetup() == -1) return 1;
+	//printf("\nSyncing system time online...\n");
+	//system("sudo sntp -s s1a.time.edu.cn");
+	
 	int hu = 0;
 	int tm = 0;
 	int displayLength = LCD_MAX_WIDTH + 1;
@@ -42,32 +48,30 @@ int main (void)
 	
 	initLCD();
 	initArduino();
-	
+
 	while(1)
 	{
+		// show time [hh:mm]
 		GetCurrentTime(displayBuffer, displayLength);
-
-		locateLCD(0, 1);
+		locateLCD(0, 0);
 		printLCD(displayBuffer);
 		
+		// show cpu load
 		memset(displayBuffer, 0, displayLength);
-		hu = 0;
-		tm = 0;
+		sprintf(displayBuffer, "| CPU:%.2f", GetCPULoad());
+		locateLCD(0, 6);
+		printLCD(displayBuffer);
+		
+		// show sensor
 		GetHumAndTemp(&hu, &tm);
-		if (hu != 0 && tm != 0)
-		{
-			sprintf(displayBuffer, "Hum/Temp:%d%%/%dC", hu, tm);
-		}
-		else
-		{
-			sprintf(displayBuffer, "Hum/Temp:--/--");
-		}
+		memset(displayBuffer, 0, displayLength);
+		sprintf(displayBuffer, "Hum/Temp:%d%%/%dC", hu, tm);
 		locateLCD(1, 0);
 		printLCD(displayBuffer);
 		
-		delay(900);
+		delay(2000);
 	}
-	
+
 	serialClose(lcdPort);
 	serialClose(arduinoPort);
 	
@@ -112,6 +116,7 @@ int initArduino()
 			serialFlush(arduinoPort);
 			if (serialGetchar(arduinoPort) == 'A')
 			{
+				serialPuts(arduinoPort, "A");
 				return 0;
 			}
 			else
@@ -260,7 +265,8 @@ int GetCurrentTime(char* text, int length)
 	lt=time(NULL);
 	ptr=localtime(&lt);
 	
-	ret = strftime(text, length, "%m/%d %T", ptr);
+	//ret = strftime(text, length, "%m/%d %R", ptr);
+	ret = strftime(text, length, "%R", ptr);
 	
 	if (ret == 0)
 	{
@@ -271,4 +277,26 @@ int GetCurrentTime(char* text, int length)
 		return 1;
 	}
 	
+}
+
+float GetCPULoad()
+{
+	int FileHandler = 0;
+	char FileBuffer[BUFFER_LENGTH] = { 0 };
+	float load;
+
+	FileHandler = open("/proc/loadavg", O_RDONLY);
+
+	if(FileHandler < 0) 
+	{
+		return 1; 
+	}
+	else
+	{
+		read(FileHandler, FileBuffer, sizeof(FileBuffer) - 1);
+		sscanf(FileBuffer, "%f", &load);
+		close(FileHandler);
+	}
+	//return (int)(load * 100);
+	return load;
 }
