@@ -8,20 +8,35 @@
 #include <time.h>
 #include <fcntl.h>
 
-#define ARDUINO_DEVICE	"/dev/ttyUSB0"
-#define LCD_DEVICE 		"/dev/ttyAMA0"
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <ifaddrs.h>
+#include <netpacket/packet.h>
+#include <net/ethernet.h>
 
-#define LCD_BITRATE		9600
-#define ARDUINO_BITRATE	9600
+#define ARDUINO_DEVICE		"/dev/ttyUSB0"
+#define LCD_DEVICE 			"/dev/ttyAMA0"
 
-#define LCD_MAX_WIDTH 	16
-#define LCD_CMD_ADDON 	5
+#define LCD_BITRATE			9600
+#define ARDUINO_BITRATE		9600
 
-#define BUFFER_LENGTH 	256
+#define LCD_MAX_WIDTH 		16
+#define LCD_CMD_ADDON 		5
+
+#define BUFFER_LENGTH 		256
+#define SENSOR_ERROR_FLAG 	-255
+#define IP_ADDR_LENGTH	 	15
+#define IP_ADDR_SHOWTIME 	5
 
 int lcdPort = -1;
 int arduinoPort = -1;
 
+int file_exist(char *filename);
 int initLCD();
 int clearLCD();
 int sendLCD(char* buf);
@@ -34,6 +49,7 @@ int initArduino();
 int GetHumAndTemp(int* humidity, int* temperature);
 
 float GetCPULoad();
+void GetIPAndMAC(char* ipaddr, int* ipCount);
 
 int main (void)
 {
@@ -43,15 +59,20 @@ int main (void)
 	
 	int hu = 0;
 	int tm = 0;
+	int ipArrow = 1;
+	int ipTimeLeft = 0;
+
 	int displayLength = LCD_MAX_WIDTH + 1;
+	char ip[IP_ADDR_LENGTH + 1] = { 0 };
 	char displayBuffer[LCD_MAX_WIDTH + 1] = { 0 };
 	
 	initLCD();
 	initArduino();
-
+	
 	while(1)
 	{
 		// show time [hh:mm]
+		memset(displayBuffer, 0, displayLength);
 		GetCurrentTime(displayBuffer, displayLength);
 		locateLCD(0, 0);
 		printLCD(displayBuffer);
@@ -62,12 +83,53 @@ int main (void)
 		locateLCD(0, 6);
 		printLCD(displayBuffer);
 		
-		// show sensor
-		GetHumAndTemp(&hu, &tm);
-		memset(displayBuffer, 0, displayLength);
-		sprintf(displayBuffer, "Hum/Temp:%d%%/%dC", hu, tm);
-		locateLCD(1, 0);
-		printLCD(displayBuffer);
+		if (arduinoPort >= 0)
+		{
+			// show sensor
+			GetHumAndTemp(&hu, &tm);
+			memset(displayBuffer, 0, displayLength);
+			if (hu == SENSOR_ERROR_FLAG || tm == SENSOR_ERROR_FLAG)
+			{
+				sprintf(displayBuffer, "Hum/Temp:  N/A  ");
+			}
+			else
+			{
+				sprintf(displayBuffer, "Hum/Temp:%d%%/%dC", hu, tm);
+			}
+			locateLCD(1, 0);
+			printLCD(displayBuffer);
+		}
+		else
+		{
+			ipTimeLeft--;
+			if (ipTimeLeft <= 0)
+			{
+				ipTimeLeft = IP_ADDR_SHOWTIME;
+				int ipCount = 0;
+				
+				GetIPAndMAC(NULL, &ipCount);
+				if (ipCount == 0)
+				{
+					locateLCD(1, 0);
+					printLCD("> No IP Address ");
+				}
+				else if (ipArrow <= ipCount)
+				{
+					memset(ip, 0, IP_ADDR_LENGTH + 1);
+					GetIPAndMAC(ip, &ipArrow);
+					ipArrow++;
+					
+					locateLCD(1, 0);
+					printLCD(">               ");
+					locateLCD(1, 1);
+					printLCD(ip);
+				}
+				else
+				{
+					ipArrow = 1;
+				}
+			}
+		}
 		
 		delay(2000);
 	}
@@ -78,56 +140,79 @@ int main (void)
 	return 0;
 }
 
+int file_exist(char *filename)
+{
+	struct stat buffer;
+	return (stat(filename, &buffer) == 0);
+	//return 1;
+}
+
 int initLCD()
 {
-	if (lcdPort < 0)
+	if (file_exist(LCD_DEVICE))
 	{
-		lcdPort = serialOpen(LCD_DEVICE, LCD_BITRATE);
-		
 		if (lcdPort < 0)
 		{
-			printf("Error: Unable to open serial device.\n");
-			return 1;
+			lcdPort = serialOpen(LCD_DEVICE, LCD_BITRATE);
+			
+			if (lcdPort < 0)
+			{
+				printf("Error: Unable to open serial device.\n");
+				return 1;
+			}
+			else
+			{
+				return sendLCD("sc;");
+			}
 		}
 		else
 		{
-			return sendLCD("sc;");
+			return 0;
 		}
 	}
 	else
 	{
+		lcdPort = -1;
 		return 0;
 	}
 }
 
 int initArduino()
 {
-	if (arduinoPort < 0)
+	if (file_exist(ARDUINO_DEVICE))
 	{
-		arduinoPort = serialOpen(ARDUINO_DEVICE, ARDUINO_BITRATE);
-		
 		if (arduinoPort < 0)
 		{
-			printf("Error: Unable to open Arduino device.\n");
-			return 1;
-		}
-		else
-		{
-			serialFlush(arduinoPort);
-			if (serialGetchar(arduinoPort) == 'A')
+			arduinoPort = serialOpen(ARDUINO_DEVICE, ARDUINO_BITRATE);
+			
+			if (arduinoPort < 0)
 			{
-				serialPuts(arduinoPort, "A");
-				return 0;
+				//printf("Error: Unable to open Arduino device.\n");
+				return 1;
 			}
 			else
 			{
-				return 1;
+				serialFlush(arduinoPort);
+				if (serialGetchar(arduinoPort) == 'A')
+				{
+					serialPuts(arduinoPort, "A");
+					return 0;
+				}
+				else
+				{
+					return 1;
+				}
 			}
+		}
+		else
+		{
+			return 0;
 		}
 	}
 	else
 	{
-		return 0;
+		arduinoPort = -1;
+		return 1;
 	}
 }
 
@@ -211,47 +296,51 @@ int GetHumAndTemp(int* humidity, int* temperature)
 	char *ptr;
 	char buf;
 	char hum_buf[BUFFER_LENGTH] = { 0 };
-	char temp_buf[BUFFER_LENGTH] = { 0 };	
+	char temp_buf[BUFFER_LENGTH] = { 0 };
+	
+	if (initArduino() == 0)
+	{
+		serialFlush(arduinoPort);
+		serialPuts(arduinoPort, "T");
+		
+		while ((buf = serialGetchar(arduinoPort)) != -1)
+		{
+			// printf("get: %c\n", buf);
+			
+			if (buf == '|' || buf == '\n' || buf == 'O' || buf == 'E')
+			{
+				break;
+			}
+			else if (buf == 'H')
+			{
+				ptr = &hum_buf[0];
+			}
+			else if (buf == 'T')
+			{
+				ptr = &temp_buf[0];
+			}
+			else
+			{
+				strcpy(ptr, &buf);
+				ptr++;
+			}
+		}
+		
+		serialFlush(arduinoPort);
+		
+		if (strlen(hum_buf) > 0 && strlen(temp_buf) > 0)
+		{
+			*humidity = atoi(hum_buf);
+			*temperature = atoi(temp_buf);
+			
+			return 0;
+		}
+	}	
+	
+	*humidity = SENSOR_ERROR_FLAG;
+	*temperature = SENSOR_ERROR_FLAG;
 
-	serialFlush(arduinoPort);
-	serialPuts(arduinoPort, "T");
-	
-	while ((buf = serialGetchar(arduinoPort)) != -1)
-	{
-		// printf("get: %c\n", buf);
-		
-		if (buf == '|' || buf == '\n' || buf == 'O' || buf == 'E')
-		{
-			break;
-		}
-		else if (buf == 'H')
-		{
-			ptr = &hum_buf[0];
-		}
-		else if (buf == 'T')
-		{
-			ptr = &temp_buf[0];
-		}
-		else
-		{
-			strcpy(ptr, &buf);
-			ptr++;
-		}
-	}
-	
-	serialFlush(arduinoPort);
-	
-	if (strlen(hum_buf) > 0 && strlen(temp_buf) > 0)
-	{
-		*humidity = atoi(hum_buf);
-		*temperature = atoi(temp_buf);
-		
-		return 0;
-	}
-	else
-	{
-		return 1;
-	}
+	return 1;
 }
 
 int GetCurrentTime(char* text, int length)
@@ -263,20 +352,26 @@ int GetCurrentTime(char* text, int length)
 	time_t lt;
 	
 	lt=time(NULL);
-	ptr=localtime(&lt);
 	
-	//ret = strftime(text, length, "%m/%d %R", ptr);
-	ret = strftime(text, length, "%R", ptr);
-	
-	if (ret == 0)
+	if (lt > 946080000) // 30 years, 1970 + 30 = 2000
 	{
-		return 0;
+		ptr=localtime(&lt);
+		
+		ret = strftime(text, length, "%R", ptr);
+		
+		if (ret == 0)
+		{
+			return 0;
+		}
+		else
+		{
+			return 1;
+		}
 	}
 	else
 	{
-		return 1;
+		sprintf(text, "Offline");
 	}
-	
 }
 
 float GetCPULoad()
@@ -300,3 +395,71 @@ float GetCPULoad()
 	//return (int)(load * 100);
 	return load;
 }
+
+void GetIPAndMAC(char* ipaddr, int* ipCount)
+{
+	int copyCount = 0;
+	int isFirstRun = (*ipCount == 0) ? 1 : 0;
+	
+	struct ifaddrs *addrs, *tmp;
+	
+	getifaddrs(&addrs);
+	tmp = addrs;
+
+	while (tmp)
+	{
+	    if (tmp->ifa_addr && 
+	    	tmp->ifa_addr->sa_family == AF_PACKET && 
+	    	!(tmp -> ifa_flags & IFF_LOOPBACK))
+	    {
+	    	//printf("%s\n", tmp->ifa_name);
+			char mac[18] = { 0 };
+			char ip[IP_ADDR_LENGTH + 1] = { 0 };
+
+	    	struct sockaddr_ll *s = (struct sockaddr_ll*)tmp->ifa_addr;
+            int i;
+            int len = 0;
+            for(i = 0; i < 6; i++)
+            {
+            	len+=sprintf(mac+len,"%02X%s",s->sll_addr[i],i < 5 ? ":":"");
+        	}
+            
+            //printf("%s: %s\n", tmp->ifa_name, mac);
+            
+    	    int inet_sock;
+		    struct ifreq ifr;
+		    inet_sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+		    strcpy(ifr.ifr_name, tmp->ifa_name);
+		    if (ioctl(inet_sock, SIOCGIFADDR, &ifr) < 0)
+		    {
+		    	printf("ERROR ON GET\n");
+		    }
+		    else
+		    {
+		    	sprintf(ip, "%s", inet_ntoa(((struct sockaddr_in*)&(ifr.ifr_addr))->sin_addr));
+		    	//printf("%s\n",ip);
+			}
+			
+			if (strlen(ip) > 0)
+			{
+				copyCount++;
+				
+				if (isFirstRun == 1)
+				{
+					*ipCount = copyCount;
+				}
+				else
+				{
+					if (*ipCount == copyCount) 
+					{
+						strcpy(ipaddr, ip);
+					}
+				}
+			}
+	    }
+	    tmp = tmp->ifa_next;
+	}
+	freeifaddrs(addrs);
+}
+

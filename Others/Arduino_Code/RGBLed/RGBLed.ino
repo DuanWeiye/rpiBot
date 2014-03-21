@@ -6,8 +6,9 @@ int LedGreenPin = 3;
 int LedBluePin = 2;
 
 dht11 DHT11;
-char buffer;
+char buffer;  
 int connectStatus = 0;
+int freeCount = 0;
 String validChar = "RGBLPT!";
 
 void setup(){
@@ -36,7 +37,7 @@ void loop()
            buffer = Serial.read();
            if (buffer == 'A')
            {
-             LedRGB(0,0,255);
+             LedRGB(255,0,255);
              delay(300);
              LedRGB(0,0,0);
              connectStatus = 1;
@@ -52,6 +53,7 @@ void loop()
      
     if (Serial.available()) 
     {
+       freeCount =0;
        buffer = Serial.read();
        
        if (validChar.indexOf(buffer) >= 0)
@@ -78,13 +80,24 @@ void loop()
          }
          else if (buffer == 'T')
          {
-           LedRGB(255,0,0);
+           int hum = (int)DHT11.humidity;
+           int tem = (int)DHT11.temperature;
+           char buf[17] = { 0 };
+           DHT11.read(DHTPin);
+           sprintf(buf, "H%.2dT%.2d|", hum, tem);
+           
+           if (hum == 0 && tem == 0)
+           {
+             LedRGB(255,0,0);
+           }
+           else
+           {
+             LedRGB(0,0,255);
+           }
+           
            delay(50);
            LedRGB(0,0,0);
            
-           char buf[17] = { 0 };
-           DHT11.read(DHTPin);
-           sprintf(buf, "H%.2dT%.2d|", (int)DHT11.humidity, (int)DHT11.temperature);
            Serial.print(buf);
          }
          
@@ -97,7 +110,15 @@ void loop()
     }
     else
     {
-      //LedFade(5);
+      if (freeCount >= 10)
+      {
+        LedFade(2);
+      }
+      else
+      {
+        freeCount++;
+        LoopInActive(1);
+      }
     }
   }
   else
@@ -124,6 +145,16 @@ void LedFade(int fadeSpeed)
     delay(50);                          
   }
   delay(800);
+}
+
+void LoopInActive(int seconds)
+{
+  for(int rounds = 0 ; rounds < seconds * 100; rounds++) 
+  { 
+    if (Serial.available()) return;
+
+    delay(10);                          
+  }
 }
 
 void LedRGB(int R, int G, int B)
