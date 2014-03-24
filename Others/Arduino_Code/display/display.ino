@@ -37,7 +37,7 @@ void loop()
   }
   
   LocateLCD(0,0);
-  PrintLCD("Analog[" + (String)LIGHT_SENSOR_PORT + "]: " + (String)GetAnalogSensor(LIGHT_SENSOR_PORT) + "  ");
+  PrintLCD("Analog[" + (String)LIGHT_SENSOR_PORT + "]: " + (String)GetAnalogSensor(LIGHT_SENSOR_PORT) + " ");
   delay(500);
 }
 
