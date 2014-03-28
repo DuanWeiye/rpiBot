@@ -55,70 +55,94 @@ void setup()
   LedFade(0,255,0,15);
   LedFade(0,0,255,15);
   
+  fanSpeed = 0;
+  led_r = 0;
+  led_g = 0;
+  led_b = 255;
+  
   starttime = millis();
 }
 
 void loop()
 {
-  if (true == GetHumidityAndTemperature(&hum, &tem))
+  String buf;
+  bool retDHT = GetHumidityAndTemperature(&hum, &tem);
+  bool retDSM = GetDust();
+    
+  if (retDHT == true)
   {
-    lcd.LocateLCD(0, 0);
-    lcd.PrintLCD((String)hum + "%/" + (String)tem + "C");
+    buf = (String)hum + "%/" + (String)tem + "C";
   }
   else
   {
-    lcd.LocateLCD(0, 0);
-    lcd.PrintLCD("---/---");
+    buf = "---/---";
   }
   
-  if (true == GetDust() && pm != 0)
-  {
-    lcd.LocateLCD(1, 7);
-    lcd.PrintLCD((String)pm + "   ");
-  }
+  lcd.LocateLCD(0, 9);
+  lcd.PrintLCD(buf);
   
-  if (pm == 0)
+  if (retDSM == true && pm != 0)
   {
-    fanSpeed = 0;
-    led_r = 0;
-    led_g = 0;
-    led_b = 255;
+    if (pm < 10)
+    {
+      buf = "----- ";
+      
+      fanSpeed = 0;
+      led_r = 0;
+      led_g = 0;
+      led_b = 255; 
+    }    
+    else if (pm >= 1 && pm < 100)
+    {
+      buf = "  " + (String)pm + "  ";
+      
+      fanSpeed = 0;
+      led_r = 0;
+      led_g = 255;
+      led_b = 0;
+    }
+    else if (pm >= 100 && pm < 500)
+    {
+      buf = " " + (String)pm + "  ";
+      
+      fanSpeed = 0;
+      led_r = 0;
+      led_g = 255;
+      led_b = 0;
+    }
+    else if (pm >= 500 && pm < 1000)
+    {
+      buf = " " + (String)pm + "  ";
+      
+      fanSpeed = 50;
+      led_r = 255;
+      led_g = 255;
+      led_b = 0;
+    }
+    else if (pm >= 1000 && pm < 10000)
+    {
+      buf = (String)pm + "  ";
+      
+      fanSpeed = 100;
+      led_r = 255;
+      led_g = 0;
+      led_b = 0;
+    }
+    else
+    {
+      buf = " " + (String)pm + " ";
+      
+      fanSpeed = 100;
+      led_r = 255;
+      led_g = 0;
+      led_b = 0;
+    }
     
-    lcd.LocateLCD(0, 13);
-    lcd.PrintLCD("MIN");    
-  }
-  else if (pm > 0 && pm <= 200)
-  {
-    fanSpeed = 0;
-    led_r = 0;
-    led_g = 255;
-    led_b = 0;
+    lcd.LocateLCD(1, 10);
+    lcd.PrintLCD(buf);
     
-    lcd.LocateLCD(0, 13);
-    lcd.PrintLCD("MIN");
+    ControlFan(fanSpeed);
   }
-  else if (pm > 200 && pm <= 500)
-  {
-    fanSpeed = 50;
-    led_r = 255;
-    led_g = 255;
-    led_b = 0;
-    
-    lcd.LocateLCD(0, 13);
-    lcd.PrintLCD("MED");    
-  }
-  else
-  {
-    fanSpeed = 99;
-    led_r = 255;
-    led_g = 0;
-    led_b = 0;
-    
-    lcd.LocateLCD(0, 13);
-    lcd.PrintLCD("MAX");
-  }
-  
-  ControlFan(fanSpeed);
   
   LedFade(led_r, led_g, led_b, 1);
 }
@@ -127,34 +151,33 @@ void DrawLCD()
 {
   // |0123456789ABCDEF|
   // |----------------|
-  //  xx%/xxC  Fan:xxx  
-  //  PM2.5: xxx
+  //  Hum/Temp:xx%/xxC  
+  //  PM(>2.5): xxxx 
   // |----------------|
   
   lcd.ClearLCD();
   
   lcd.LocateLCD(0, 0);
-  lcd.PrintLCD("---/---");
-  
-  lcd.LocateLCD(0, 9);
-  lcd.PrintLCD("Fan:---");
+  lcd.PrintLCD("Hum/Temp:---/---");
   
   lcd.LocateLCD(1, 0);
-  lcd.PrintLCD("PM2.5: ---");
+  lcd.PrintLCD("PM(>2.5): ----- ");    //particulate matter
 }
 
 void LedFade(int R, int G, int B, int interval)
 {
   LedRGB(0,0,0);
   
-  for(int fadeValue = 0; fadeValue <= 255; fadeValue += interval) {
+  for(int fadeValue = 0; fadeValue <= 255; fadeValue += interval) 
+  {
     LedRGB(R * fadeValue / 255, G * fadeValue / 255, B * fadeValue / 255);
-    delay(10);                            
+    delay(10);
   } 
   
-  for(int fadeValue = 255 ; fadeValue >= 0; fadeValue -= interval) { 
+  for(int fadeValue = 255 ; fadeValue >= 0; fadeValue -= interval) 
+  { 
     LedRGB(R * fadeValue / 255, G * fadeValue / 255, B * fadeValue / 255);
-    delay(10);                          
+    delay(10);
   }
   
   LedRGB(0,0,0);
@@ -220,12 +243,14 @@ bool GetDust()
       ratio = (lowpulseoccupancy - endtime + starttime + sampletime_ms) / (sampletime_ms * 10.0);
       pm = 1.1 * pow(ratio, 3) - 3.8 * pow(ratio, 2) + 520 * ratio + 0.62;
       float offsetFix = (endtime - starttime - 30000) / 30000.0;
-      pm = (1.00 - offsetFix) * pm / ratio;
+      pm = (1.00 - offsetFix) * pm ;/// ratio;
   
       //Serial.print(ratio);
-      //Serial.print(",");
-      //Serial.println(pm);
-      //Serial.println(endtime - starttime);
+      //Serial.print(", OLD pm: " + (String)pm);
+      
+      //pm = (1.00 - offsetFix) * pm / ratio;
+      
+      //Serial.println(", NEW pm: " + (String)pm);
     }
     
     lowpulseoccupancy = 0;

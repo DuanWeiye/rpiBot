@@ -30,9 +30,20 @@ int Library_LCD::PrintLCD(String text)
 int Library_LCD::LocateLCD(int x, int y)
 {
   if (x < 0 || y < 0 || x > 15 || y > 15) return 1;
+  
+  int count = 0;
+  bool ret = false;
+  
+  while (ret == false)
+  {
+  	count++;
+  	if (count > 5) break;
+  	
+  	String buf = "sd" + (String)x + "," + (String)y + ";";
+  	ret = SendLCD(buf);
+  }
 
-  String buf = "sd" + (String)x + "," + (String)y + ";";
-  return SendLCD(buf);
+  return ret;
 }
 
 int Library_LCD::ClearLCD()
@@ -63,7 +74,7 @@ int Library_LCD::SendLCD(String buf)
     
   //Serial.print("DEBUG: SendLCD: " + buf + "[");
   
-  while (retryCount < 10)
+  while (retryCount < 20)
   {
     retryCount++;
     
@@ -82,17 +93,23 @@ int Library_LCD::SendLCD(String buf)
       {
         ret = 1;
         delay(20);
+        
+        LCDSerial.flush();
+  		LCDSerial.print(buf);
       }
       else
       {
         ret = 2;
         delay(20);
+        
+        LCDSerial.flush();
+        LCDSerial.print(buf);
       }
     }
     else
     {
       ret = 3;
-      delay(20);
+      delay(30);
     }
   }
   
