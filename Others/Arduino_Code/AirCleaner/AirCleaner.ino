@@ -7,9 +7,9 @@
 #define FAN_SPEED_MAX   249
 #define FAN_SPEED_MIN   0
 
-#define PIN_LED_RED     9
+#define PIN_LED_RED     5
 #define PIN_LED_GREEN   6
-#define PIN_LED_BLUE    5
+#define PIN_LED_BLUE    9
 #define PIN_FAN         3
 #define PIN_DHT         4
 #define PIN_DSM501A     10
