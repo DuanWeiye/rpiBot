@@ -68,7 +68,7 @@ void loop()
   String buf;
   bool retDHT = GetHumidityAndTemperature(&hum, &tem);
   bool retDSM = GetDust();
-    
+  
   if (retDHT == true)
   {
     buf = (String)hum + "%/" + (String)tem + "C";
@@ -145,6 +145,7 @@ void loop()
   }
   
   LedFade(led_r, led_g, led_b, 1);
+  BTDataTransfer();
 }
 
 void DrawLCD()
@@ -168,13 +169,13 @@ void LedFade(int R, int G, int B, int interval)
 {
   LedRGB(0,0,0);
   
-  for(int fadeValue = 0; fadeValue <= 255; fadeValue += interval) 
+  for(int fadeValue = 0; fadeValue <= 255 && Serial.available() <= 0; fadeValue += interval) 
   {
     LedRGB(R * fadeValue / 255, G * fadeValue / 255, B * fadeValue / 255);
     delay(10);
   } 
   
-  for(int fadeValue = 255 ; fadeValue >= 0; fadeValue -= interval) 
+  for(int fadeValue = 255 ; fadeValue >= 0 && Serial.available() <= 0; fadeValue -= interval) 
   { 
     LedRGB(R * fadeValue / 255, G * fadeValue / 255, B * fadeValue / 255);
     delay(10);
@@ -263,4 +264,60 @@ bool GetDust()
     //Serial.println(endtime - starttime);
     return false;
   }
+}
+
+void BTDataTransfer()
+{
+   if (Serial.available() > 0) 
+   {
+      char buffer = Serial.read();   
+      
+      if (buffer == NULL)
+      {
+        //
+      }   
+      else if (buffer == '!')
+      {
+        LedRGB(0,0,0);
+      }         
+      else if (buffer == 'A')
+      {
+        LedRGB(255,0,255);
+        delay(300);
+        LedRGB(0,0,0);
+        
+        Serial.print('A');
+      }
+      else if (buffer == 'V')
+      {
+        Serial.print("Arduino AirCleaner HW.V1|");
+      }       
+      else if (buffer == 'R')
+      {
+        LedRGB(255,0,0);
+      }
+      else if (buffer == 'G')
+      {
+        LedRGB(0,255,0);
+      }
+      else if (buffer == 'B')
+      {
+        LedRGB(0,0,255);
+      }
+      else if (buffer == 'P')
+      {
+        LedFade(255,255,255,5);
+      }
+      else if (buffer == 'T')
+      {
+        char buf[255] = { 0 };
+        sprintf(buf, "H%.2dT%.2dS%.2d|", hum, tem, pm);
+        
+        Serial.print(buf);
+      }
+      else
+      {
+        Serial.print("E");
+      }
+   }
 }

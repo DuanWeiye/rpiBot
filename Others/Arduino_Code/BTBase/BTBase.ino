@@ -1,7 +1,3 @@
-#include <EEPROM.h>
-#include <avr/wdt.h>
-
-#define EEPROMADDR     0
 #define LedRedPin      5
 #define LedGreenPin    6
 #define LedBluePin     9
@@ -10,37 +6,11 @@ char buffer;
 int connectStatus = 0;
 int freeCount = 0;
 String validChar = "RGBLPT!F";
-byte flashMode = 'N';
-int flashCount = 0;
 
 void setup()
 {
-  flashMode = EEPROM.read(EEPROMADDR);
-  
-  if (flashMode == '1')
-  {
-    Serial.begin(9600);
-    Serial.print("AT+BAUD7");
-    
-    EEPROM.write(EEPROMADDR, '2');
-   
-    LedRGB(255,255,255);
-    wdt_enable(WDTO_1S);
-    delay(10000);
-    
-  }
-  else if (flashMode == '2')
-  {
-    Serial.begin(57600);
-    Serial.print("AT+BAUD4");
-    
-    EEPROM.write(EEPROMADDR, '3');
-  }
-  else
-  {
-    Serial.begin(9600);
-  }
-  
+  Serial.begin(9600);
+
   pinMode(LedRedPin, OUTPUT); 
   pinMode(LedGreenPin, OUTPUT); 
   pinMode(LedBluePin, OUTPUT); 
@@ -49,32 +19,7 @@ void setup()
 }
 
 void loop()
-{
-  if (flashMode == '2')
-  {
-    flashCount++;
-    
-    if (flashCount < 120)
-    {
-      LedRGB(0,0,255);
-      delay(10);
-      LedRGB(0,0,0);
-      
-      delay(1000);
-      return;
-    }
-    else
-    {
-      LedRGB(255,255,255);
-      delay(100);
-      LedRGB(0,0,0);
-      delay(100);
-      LedRGB(255,255,255);
-      wdt_enable(WDTO_1S);
-      delay(10000);
-    }
-  }
-  
+{ 
   if (Serial)
   {
      if (connectStatus == 0)
@@ -133,12 +78,13 @@ void loop()
              }
              else if (buffer == 'F')
              {
-               LedRGB(0,0,255);
-               delay(1000);
-               EEPROM.write(EEPROMADDR, '1');
-               
-               wdt_enable(WDTO_1S);
+               LedRGB(255,255,255);
+               Serial.end();
+               Serial.begin(57600);
                delay(10000);
+               LedRGB(0,0,0);
+               Serial.end();
+               Serial.begin(9600);
              }
              Serial.print("O");
            }
