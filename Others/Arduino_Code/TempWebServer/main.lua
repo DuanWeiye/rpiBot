@@ -5,12 +5,17 @@ print [[
 Content-Type: text/plain
 ]]
 
-successReturnText = "suc_ardu_openwrt"
+warningTemperature = 40
 
-localLogFile = "/mnt/web/log.txt"
+successReturnText = "succ_ardu_openwrt"
+
+localLogPath = "/mnt/web/data/node_"
+globalLogPath = "/mnt/web/data/global.log"
+mailList = "/mnt/web/data/mail.list"
+
 mailTempPath = "/tmp/warning.mail"
 
-maskCode = "abc123"
+maskCode = "ArduinoEnvNode"
 
 function Split(str, delim, maxNb)
 	if string.find(str, delim) == nil then
@@ -40,46 +45,87 @@ function Split(str, delim, maxNb)
 	return result
 end
 
-function SendMail(mailTo)
-	local mailFile = io.open(mailTempPath, "w")
+function SendMail()
+	local globalLog = io.open(globalLogPath, "a+")
+	for line in globalLog:lines() do
+		if line ~= nil then
+			local globalData  = Split(line, "|", nil)
+			if globalData[4] == data[2] and globalData[1] == lTimeDate and globalData[2] == lTimeHour then
+				print("Giveup SendMail\n")
+				do return end
+			end
+		end
+	end
+	globalLog:write(nowText)
+	globalLog:close()
 	
+	local mailFile = io.open(mailTempPath, "w")
 	mailFile:write("From: Environment Monitor <admin@brainexplode.com>\n")
 	mailFile:write("To: Administrator\n")
-	mailFile:write("Subject: 19F Environment Warning\n\n")
+	mailFile:write("Subject: Environment Warning\n\n")
 	mailFile:write("\n")
-	mailFile:write("Time: " .. ltime .. "\n")
-	mailFile:write("Node IP: " .. ta[2] .. "\n")
-	mailFile:write("Temperature: " .. ta[3] .. " C\n")
-        mailFile:write("Humidity: " .. ta[4] .. " %\n")
+	mailFile:write("Time: " .. lTimeMail .. "\n")
+	mailFile:write("Node IP: " .. data[2] .. "\n")
+	mailFile:write("Temperature: " .. data[3] .. " C\n")
+        mailFile:write("Humidity: " .. data[4] .. " %\n")
         mailFile:write("\n")
 	mailFile:close()
-	
-	local cmdText = string.format("cat %s | sendmail %s", mailTempPath, mailTo)
-	os.execute(cmdText)
+
+	local mailTo = io.open(mailList, "r")
+	for line in mailTo:lines() do
+		if line ~= nil then
+			print("SendMail To: " .. line .. "\n")
+			local cmdText = string.format("cat %s | sendmail %s", mailTempPath, line)
+			os.execute(cmdText)
+		end
+	end
+	mailTo:close()
 end
 
 function main()
 	parameter = os.getenv("QUERY_STRING")
 	
 	if parameter ~= nil then
-		ta  = Split(parameter, ",", nil)
+		data  = Split(parameter, ",", nil)
 		
-		if table.getn(ta) == 4 then
-			if ta[1] == maskCode then
+		if table.getn(data) == 4 then
+			if data[1] == maskCode then
 				print(successReturnText)
 				
-				ltime = os.date()				
-				local logFile = io.open(localLogFile, "a")
+				-- [2014/05/09|08|30|192.168.1.1|30|20]
+				lTimeMail = os.date("%Y/%m/%d %H:%M:%S", time)
+				lTimeDate = os.date("%Y/%m/%d", time)
+				lTimeHour = os.date("%H", time)
+				lTimeMinute = os.date("%M", time)
+				nowText = lTimeDate .. "|" .. lTimeHour .. "|" .. lTimeMinute .. "|" .. data[2] .. "|" .. data[3] .. "|" .. data[4] .. "\n"
 				
-				logFile:write("Time: " .. ltime .. "\n")
-				logFile:write("Node IP: " .. ta[2] .. "\n")
-				logFile:write("Temperature: " .. ta[3] .. "\n")
-				logFile:write("Humidity: " .. ta[4] .. "\n\n")
+				local logFile = io.open(localLogPath .. data[2], "a+")
 				
+				local last2Text = nil
+				local last1Text = nil
+				for line in logFile:lines() do
+					if line ~= nil then
+						last2Text = last1Text
+						last1Text = line
+					end
+				end
+				
+				if last1Text == nil or last2Text == nil then
+					print("WriteLog\n")
+					logFile:write(nowText)
+				else
+					local last2Data  = Split(last2Text, "|", nil)
+					local last1Data  = Split(last1Text, "|", nil)
+					
+					if last1Data[1] ~= lTimeDate or last1Data[2] ~= lTimeHour or last1Data[3] ~= lTimeMinute then
+						print("WriteLog\n")
+						logFile:write(nowText)
+					end
+				end
 				logFile:close()
 				
-				if tonumber(ta[3]) >= 40 then
-					SendMail("gamekiller123321@gmail.com")
+				if last2Data[1] == lTimeDate and last1Data[1] == lTimeDate and tonumber(last2Data[5]) >= warningTemperature and tonumber(last1Data[5]) >= warningTemperature and tonumber(data[3]) >= warningTemperature then
+					SendMail()
 				end
 			end
 		end

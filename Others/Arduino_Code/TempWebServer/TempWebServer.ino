@@ -32,11 +32,11 @@ unsigned long lastReadingTime = 0;                      // last time reading the
 unsigned long lastAttemptTime = 0;                      // last time connected to the server, in milliseconds
 
 const unsigned long serverWaitInterval = 3000;
-const unsigned long requestReadingInterval = 20000;      // delay between requests, in milliseconds
-const unsigned long requestAttemptInterval = 60000;     // delay between requests, in milliseconds
+const unsigned long requestReadingInterval = 30000;      // delay between requests, in milliseconds
+const unsigned long requestAttemptInterval = 600000;     // delay between requests, in milliseconds
 
-const String maskCode = "abc123";
-const String SuccessReturnText = "suc_ardu_openwrt";
+const String maskCode = "ArduinoEnvNode";
+const String SuccessReturnText = "succ_ardu_openwrt";
 
 void setup() 
 {
@@ -164,7 +164,7 @@ void ListenForEthernetClients()
     }
     
     // give the web browser time to receive the data
-    delay(10);
+    delay(20);
     
     // close the connection:
     webClient.stop();
