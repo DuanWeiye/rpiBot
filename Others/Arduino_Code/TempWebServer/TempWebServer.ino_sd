@@ -1,8 +1,10 @@
 #include <SPI.h>
 #include <Ethernet.h>
+#include <SD.h>x
 #include <String.h>
 #include <dht11.h>
 
+File fileOnSD;
 dht11 DHT11;
 
 #define DHT11PIN 2
@@ -16,12 +18,11 @@ byte mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x01 };
 
 // Assign default IP address for the controller:
 IPAddress ip(192, 168, 1, 170);
-IPAddress gateway(192, 168, 1, 1);
-IPAddress subnet(255, 255, 255, 0);
+byte gateway[] = { 192, 168, 1, 1 };
+byte subnet[] = { 255, 255, 255, 0 };
 
 // Server
-char serverName[] = "192.168.1.4";
-
+char serverName[] = "192.168.22.77";
 
 // Initialize the Ethernet
 EthernetServer server(80);
@@ -31,7 +32,7 @@ unsigned long requestFailedTimes = 0;                   // Fail time of send
 unsigned long lastReadingTime = 0;                      // last time reading the data, in milliseconds
 unsigned long lastAttemptTime = 0;                      // last time connected to the server, in milliseconds
 
-const unsigned long serverWaitInterval = 10000;
+const unsigned long serverWaitInterval = 3000;
 const unsigned long requestReadingInterval = 30000;      // delay between requests, in milliseconds
 const unsigned long requestAttemptInterval = 600000;     // delay between requests, in milliseconds
 
@@ -40,8 +41,16 @@ const String SuccessReturnText = "succ_ardu_openwrt";
 
 void setup() 
 {
-  Serial.begin(9600);
+  // For SD
+  pinMode(10, OUTPUT);
   
+  Serial.begin(9600);
+  Serial.println("Init");
+  
+  if (!SD.begin(4)) 
+  {
+    Serial.println("SD init failed");
+  }
   // start the Ethernet connection and the server:
   if (Ethernet.begin(mac) == 0) 
   {
@@ -53,6 +62,7 @@ void setup()
     isDHCP = true;
   }
   
+  Serial.println("Server Begin");
   server.begin();
   
   myIP  = String(Ethernet.localIP()[0], DEC) + ".";
@@ -80,7 +90,7 @@ void loop() {
     // timestamp the last time you got a reading:
     lastReadingTime = millis();
   }
-  
+  /*
   if (millis() - lastAttemptTime > requestAttemptInterval) 
   {
     // if you're not connected, and two minutes have passed since
@@ -89,7 +99,7 @@ void loop() {
     
     lastAttemptTime = millis();
   }
-
+   */
   ListenForEthernetClients();
 }
 
@@ -120,9 +130,59 @@ void ListenForEthernetClients()
           webClient.println();
           
           // print the current readings, in HTML format:
-          webClient.print("== Arduino temperature station ==");
-          webClient.println("<br /><br />");
+          webClient.println("<html>");
+          webClient.println("<head>");
+          webClient.println("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />");
+          webClient.println("");
+          webClient.println("<title>Environment Status</title>");
+
+          fileOnSD = SD.open("lib.js");
+          if (fileOnSD) 
+          {
+            webClient.println("<script>");
+            Serial.println("file open");
+            
+            while (fileOnSD.available())
+            {
+            	webClient.print(fileOnSD.read());
+            }
+            
+            fileOnSD.close();
+          }
           
+          webClient.println("window.onload = function(){");
+          webClient.println("var container_1 = document.getElementById(\"node_container_1\");");
+          webClient.println("var seriesData_1 = [{name:\"Temperature\", data:[");
+          webClient.println("29,29,28,29,29,29,29,29,29,29,28,28,29,28,29,29,29,28,0,0,0,0,0,0");
+          webClient.println("], color:\"RGB(255,0,0)\"},{name:\"Humidity\", data:[");
+          webClient.println("31,32,33,31,31,31,31,31,31,31,32,32,31,32,31,31,31,32,0,0,0,0,0,0");
+          webClient.println("], color:\"RGB(0,255,0)\"},{name:\"Ping\", data:[");
+          webClient.println("20,20,20,20,20,20,20,20,20,20,20,20,20,15,73,46,32,100,0,0,0,0,0,0");
+          webClient.println("], color:\"RGB(0,0,255)\"}];");
+          webClient.println("");
+          webClient.println("");
+          webClient.println("");
+          webClient.println("");
+          webClient.println("");
+          
+          webClient.println("</head>");
+          webClient.println("<body>");
+          webClient.println("<h2>Environment Status</h2>");
+          webClient.println("<div id=\"global_container\" style=\"width:1000px; height:100px; border:1px; border-style:solid;\">");
+          webClient.println("<h3>&nbsp;&nbsp;&nbsp;Server UpTime:&nbsp; 10:20:22 up 0 min,  load average: 0.82, 0.27, 0.09</h3>");
+          webClient.println("<h3>&nbsp;&nbsp;&nbsp;Node (Alive / All):&nbsp;1 / 1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<select style=\"width: 200px; font-size: 16px;\">");
+          webClient.println("<option value=\"192.168.22.152\">192.168.22.152</option></select></h3></div></br>");
+          webClient.println("<div id=\"node_container_1\" style=\"width:1000px; height:600px; border:1px; border-style:solid; \"></div></br>");
+          webClient.println("</body>");
+          webClient.println("</html>");
+          webClient.println("");
+          webClient.println("");
+          webClient.println("");
+          webClient.println("");
+          webClient.println("");
+          
+          
+          /*
           webClient.print("Local IP Address: ");
           webClient.print(Ethernet.localIP());
           webClient.print(" (");
@@ -147,7 +207,7 @@ void ListenForEthernetClients()
           webClient.print(hum);
           webClient.print(" %");
           webClient.println("<br />");  
-          
+          */
           break;
         }
         if (c == '\n')
