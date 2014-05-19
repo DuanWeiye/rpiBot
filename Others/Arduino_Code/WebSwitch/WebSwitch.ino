@@ -6,7 +6,6 @@
 
 static boolean isDHCP = false;
 static String myIP = "";
-static char myUPTime[100] = { 0 };
 String requestBuffer = "BUF ";
 byte mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x01 };
 
@@ -93,9 +92,8 @@ void ListenForEthernetClients()
         // so you can send a reply
         if (c == '\n' && currentLineIsBlank) 
         {
-          uptime();
+          boolean isMono = false;
           Serial.println(requestBuffer);
-          Serial.println(requestBuffer.indexOf("GET /?SetSwitch=ON"));
 
           if (requestBuffer.indexOf("GET /?SetSwitch=ON") > 0)
           {
@@ -106,6 +104,20 @@ void ListenForEthernetClients()
           {
             digitalWrite(PIN_SWITCH, HIGH);
             Serial.println("Switch: OFF");
+          }
+          else if (requestBuffer.indexOf("GET /?SetSwitchMono=ON") > 0)
+          {
+            digitalWrite(PIN_SWITCH, LOW);
+            Serial.println("Switch: ON");
+            
+            isMono = true;
+          }
+          else if (requestBuffer.indexOf("GET /?SetSwitchMono=OFF") > 0)
+          {
+            digitalWrite(PIN_SWITCH, HIGH);
+            Serial.println("Switch: OFF");
+            
+            isMono = true;
           }
           else
           {
@@ -119,48 +131,52 @@ void ListenForEthernetClients()
           webClient.println("Connection: close");
 	  //webClient.println("Refresh: 5");
           webClient.println();
-          webClient.println("<!DOCTYPE HTML>");
           
-          webClient.println("<HTML>");
-          webClient.println("<HEAD>");
-
-          // print the current readings, in HTML format:
-          webClient.println("<TITLE>Arduino Air Switch</TITLE>");
-          webClient.println("</HEAD>");
-          webClient.println("<BODY>");
-          webClient.println("<H2>Arduino Air Switch</H2><br />");
-          
-          webClient.print("<H4>UPTime: ");
-          Serial.println(myUPTime);
-          webClient.println("</H4>");
-          
-          webClient.print("<H4>Local IP Address: ");
-          webClient.print(Ethernet.localIP());
-          webClient.print(" (");
-          webClient.print(isDHCP == true ? "DHCP)" : "STATIC)");
-          webClient.println("</H4>");
-
-          webClient.print("<H4>Server IP Address: ");
-          webClient.println(serverName);
-          webClient.println("</H4>");
-
-          webClient.print("<H4>Switch Status: ");
-          if (digitalRead(PIN_SWITCH))
+          if (isMono == false)
           {
-            webClient.println("<font color='red'>OFF</font>");
+            webClient.println("<!DOCTYPE HTML>");
+            
+            webClient.println("<HTML>");
+            webClient.println("<HEAD>");
+  
+            // print the current readings, in HTML format:
+            webClient.println("<TITLE>Arduino Air Switch</TITLE>");
+            webClient.println("</HEAD>");
+            webClient.println("<BODY>");
+            webClient.println("<H2>Arduino Air Switch</H2><br />");
+            
+            webClient.print("<H4>Local IP Address: ");
+            webClient.print(Ethernet.localIP());
+            webClient.print(" (");
+            webClient.print(isDHCP == true ? "DHCP)" : "STATIC)");
+            webClient.println("</H4>");
+  
+            webClient.print("<H4>Server IP Address: ");
+            webClient.println(serverName);
+            webClient.println("</H4>");
+  
+            webClient.print("<H4>Switch Status: ");
+            if (digitalRead(PIN_SWITCH))
+            {
+              webClient.println("<font color='red'>OFF</font>");
+            }
+            else
+            {
+              webClient.println("<font color='green'>ON</font>");
+            }
+            
+            webClient.println("<FORM action=\"/\">");
+            webClient.println("<P> <INPUT type=\"radio\" name=\"SetSwitch\" value=\"ON\">ON");
+            webClient.println("<P> <INPUT type=\"radio\" name=\"SetSwitch\" value=\"OFF\">OFF");
+            webClient.println("<P> <INPUT type=\"submit\" value=\"Submit\"></FORM></H4>");
+            
+            webClient.println("</BODY>");
+            webClient.println("</HTML>");
           }
           else
           {
-            webClient.println("<font color='green'>ON</font>");
+            webClient.println("OK");
           }
-          
-          webClient.println("<FORM action=\"/\">");
-          webClient.println("<P> <INPUT type=\"radio\" name=\"SetSwitch\" value=\"ON\">ON");
-          webClient.println("<P> <INPUT type=\"radio\" name=\"SetSwitch\" value=\"OFF\">OFF");
-          webClient.println("<P> <INPUT type=\"submit\" value=\"Submit\"></FORM></H4>");
-          
-          webClient.println("</BODY>");
-          webClient.println("</HTML>");
           
           break;
         }
@@ -258,54 +274,4 @@ void CheckReverseServer()
   {
     Serial.println('connection failed');
   }
-}   
-
-unsigned long millisRollover() 
-{
-  static unsigned long numRollovers = 0; // variable that permanently holds the number of rollovers since startup
-  static boolean readyToRoll = false; // tracks whether we've made it halfway to rollover
-  unsigned long now = millis(); // the time right now
-  unsigned long halfwayMillis = 2147483647; // this is halfway to the max millis value (17179868 for earlier versions of Arduino)
-
-  if (now > halfwayMillis) { // as long as the value is greater than halfway to the max
-    readyToRoll = true; // you are ready to roll over
-  }
-
-  if (readyToRoll == true && now < halfwayMillis) {
-    // if we've previously made it to halfway
-    // and the current millis() value is now _less_ than the halfway mark
-    // then we have rolled over
-    numRollovers++; // add one to the count the number of rollovers
-    readyToRoll = false; // we're no longer past halfway
-  } 
-  return numRollovers;
 }
-
-void uptime()
-{
-  unsigned long days = 0;
-  unsigned long hours = 0;
-  unsigned long mins = 0;
-  unsigned long secs = 0;
-  
-  unsigned long maxHours = 24;
-  unsigned long maxMinutes = 60;
-  unsigned long maxSeconds = 60;
-  unsigned long maxMillis = 1000;
-  unsigned long maxRounds = 4294967295;
-  
-  //millis() MAX:4294967295 | about 50 days each [numRollovers]
-  
-  secs = millis() / maxMillis + (maxRounds / maxMillis) * millisRollover(); //convect milliseconds to seconds
-  mins = secs / maxSeconds; //convert seconds to minutes
-  hours = mins / maxMinutes; //convert minutes to hours
-  days = hours / maxHours; //convert hours to days
-  
-  secs = secs - (mins * maxSeconds); //subtract the coverted seconds to minutes in order to display 59 secs max 
-  mins = mins - (hours * maxMinutes); //subtract the coverted minutes to hours in order to display 59 minutes max
-  hours = hours - (days * maxHours); //subtract the coverted hours to days in order to display 23 hours max
-  
-  memset(myUPTime, NULL, 100);
-  sprintf(myUPTime, "%lu days %lu hours %lu minutes %lu seconds", days, hours, mins, secs);
-}
-
