@@ -2,7 +2,8 @@
 #include <Ethernet.h>
 #include <String.h>
 
-#define PIN_SWITCH 5
+#define PIN_1_SWITCH A0
+#define PIN_2_SWITCH A1
 
 static boolean isDHCP = false;
 static String myIP = "";
@@ -10,31 +11,35 @@ String requestBuffer = "BUF ";
 byte mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x01 };
 
 // Assign default IP address for the controller:
-IPAddress ip(192, 168, 254, 2);
-IPAddress gateway(192, 168, 254, 1);
+IPAddress ip(172, 0, 0, 2);
+IPAddress gateway(172, 0, 0, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 // Server
-char serverName[] = "192.168.1.1";
+char serverName[] = "www.baidu.com";
 
 // Initialize the Ethernet
 EthernetServer server(80);
 
 unsigned long lastAttemptTime = 0;                       // last time connected to the server, in milliseconds
+unsigned long totalFailedCount = 0;
 
 const unsigned long serverWaitInterval = 10000;
-const unsigned long requestAttemptInterval = 600000;     // delay between requests, in milliseconds
+const unsigned long requestAttemptInterval = 60000;     // delay between requests, in milliseconds
 
-const String maskCode = "ArduinoEnvNode";
-const String SuccessReturnText = "succ_ardu_openwrt";
+//const String maskCode = "ArduinoEnvNode";
+//const String SuccessReturnText = "succ_ardu_openwrt";
 
 void setup() 
 {
   Serial.begin(9600);
-
-  pinMode(PIN_SWITCH, OUTPUT);
-  digitalWrite(PIN_SWITCH, HIGH);
-
+  
+  pinMode(PIN_1_SWITCH, OUTPUT);
+  pinMode(PIN_2_SWITCH, OUTPUT);
+    
+  digitalWrite(PIN_1_SWITCH, LOW);
+  digitalWrite(PIN_2_SWITCH, LOW);
+  
   // start the Ethernet connection and the server:
   if (Ethernet.begin(mac) == 0) 
   {
@@ -59,11 +64,13 @@ void setup()
   delay(1000);
 }
 
+void(* resetFunc) (void) = 0; //declare reset function @ address 0
+
 void loop()
 { 
   if (millis() - lastAttemptTime > requestAttemptInterval) 
   {
-    CheckReverseServer();
+    CheckInternetConnection();
 
     lastAttemptTime = millis();
   }
@@ -92,36 +99,60 @@ void ListenForEthernetClients()
         // so you can send a reply
         if (c == '\n' && currentLineIsBlank) 
         {
-          boolean isMono = false;
+          String strSW1 = "";
+          String strSW2 = "";
+          String paraALLText = "GET /?SetSwitch=";
+          String paraReboot = "GET /?Reboot";
           Serial.println(requestBuffer);
-
-          if (requestBuffer.indexOf("GET /?SetSwitch=ON") > 0)
+          
+          int paraPosALL = requestBuffer.indexOf(paraALLText);
+          int paraPosReboot = requestBuffer.indexOf(paraReboot);
+          int paraPosMono = requestBuffer.indexOf("MONO");
+          Serial.print("paraPosALL=");
+          Serial.println(paraPosALL);
+          
+          if (paraPosALL > 0)
           {
-            digitalWrite(PIN_SWITCH, LOW);
-            Serial.println("Switch: ON");
-          }
-          else if (requestBuffer.indexOf("GET /?SetSwitch=OFF") > 0)
-          {
-            digitalWrite(PIN_SWITCH, HIGH);
-            Serial.println("Switch: OFF");
-          }
-          else if (requestBuffer.indexOf("GET /?SetSwitchMono=ON") > 0)
-          {
-            digitalWrite(PIN_SWITCH, LOW);
-            Serial.println("Switch: ON");
+            int switchZeroPos = paraPosALL + paraALLText.length();
+            strSW1 = requestBuffer.substring(switchZeroPos + 0, switchZeroPos + 2);
+            strSW2 = requestBuffer.substring(switchZeroPos + 3, switchZeroPos + 5);
             
-            isMono = true;
-          }
-          else if (requestBuffer.indexOf("GET /?SetSwitchMono=OFF") > 0)
-          {
-            digitalWrite(PIN_SWITCH, HIGH);
-            Serial.println("Switch: OFF");
+            if (strSW1 == "ON")
+            {
+              digitalWrite(PIN_1_SWITCH, LOW);
+              Serial.println("Switch_1: ON");
+            }
+            else if (strSW1 == "OF")
+            {
+              digitalWrite(PIN_1_SWITCH, HIGH);
+              Serial.println("Switch_1: OFF");
+            }
+            else
+            {
+              Serial.print("Switch_1: Unknown: ");
+              Serial.println(strSW1);
+            }
             
-            isMono = true;
+            if (strSW2 == "ON")
+            {
+              digitalWrite(PIN_2_SWITCH, LOW);
+              Serial.println("Switch_2: ON");
+            }
+            else if (strSW2 == "OF")
+            {
+              digitalWrite(PIN_2_SWITCH, HIGH);
+              Serial.println("Switch_2: OFF");
+            }
+            else
+            {
+              Serial.print("Switch_2: Unknown: ");
+              Serial.println(strSW2);
+            }
           }
-          else
+          
+          if (paraPosReboot > 0)
           {
-            //
+            ReBootSW();
           }
           
           requestBuffer = "BUF ";
@@ -132,8 +163,9 @@ void ListenForEthernetClients()
 	  //webClient.println("Refresh: 5");
           webClient.println();
           
-          if (isMono == false)
+          if (paraPosMono == -1)
           {
+            
             webClient.println("<!DOCTYPE HTML>");
             
             webClient.println("<HTML>");
@@ -156,19 +188,67 @@ void ListenForEthernetClients()
             webClient.println("</H4>");
   
             webClient.print("<H4>Switch Status: ");
-            if (digitalRead(PIN_SWITCH))
+            
+            webClient.print("SW1: ");
+            if (digitalRead(PIN_1_SWITCH))
             {
-              webClient.println("<font color='red'>OFF</font>");
+              strSW1 = "OF";
+              webClient.print("<font color='red'>OFF</font>");
             }
             else
             {
-              webClient.println("<font color='green'>ON</font>");
+              strSW1 = "ON";
+              webClient.print("<font color='green'>ON</font>");
             }
+              
+            webClient.print(" SW2: ");
+            if (digitalRead(PIN_2_SWITCH))
+            {
+              strSW2 = "OF";
+              webClient.print("<font color='red'>OFF</font>");
+            }
+            else
+            {
+              strSW2 = "ON";
+              webClient.print("<font color='green'>ON</font>");
+            }
+            webClient.println("</H4>");
             
-            webClient.println("<FORM action=\"/\">");
-            webClient.println("<P> <INPUT type=\"radio\" name=\"SetSwitch\" value=\"ON\">ON");
-            webClient.println("<P> <INPUT type=\"radio\" name=\"SetSwitch\" value=\"OFF\">OFF");
-            webClient.println("<P> <INPUT type=\"submit\" value=\"Submit\"></FORM></H4>");
+            /*
+            webClient.print("<H4>Change: ");
+            
+            webClient.print("<a href='http://");
+            webClient.print(myIP);
+            webClient.print("/?SetSwitch=");
+            if (strSW1 == "OF")
+            {
+              webClient.print("ON");
+            }
+            else
+            {
+              webClient.print("OF");
+            }
+            webClient.print(",");
+            webClient.print(strSW2);
+            webClient.println("'><input type='button' name='SWITCH1' value='SWITCH1'/></a>");
+            
+            webClient.print("<a href='http://");
+            webClient.print(myIP);
+            webClient.print("/?SetSwitch=");
+            webClient.print(strSW1);
+            webClient.print(",");
+            if (strSW2 == "OF")
+            {
+              webClient.print("ON");
+            }
+            else
+            {
+              webClient.print("OF");
+            }
+            webClient.println("'><input type='button' name='SWITCH2' value='SWITCH2'/></a>");           
+            webClient.println("</H4>");
+            */
+            
             
             webClient.println("</BODY>");
             webClient.println("</HTML>");
@@ -204,74 +284,38 @@ void ListenForEthernetClients()
   }
 } 
 
-void CheckReverseServer()
+void CheckInternetConnection()
 {
   EthernetClient client;
-
+  
   // attempt to connect, and wait a millisecond:
-  if (client.connect(serverName, 80)) 
+  if (client.connect(serverName, 80))
   {
-    String postText = maskCode + "," + myIP;
-
-    Serial.print("Request String: ");
-    Serial.println(postText);
-
-    Serial.print("Sending HTTP request...");
-
-    // make HTTP request
-    client.print("GET /bin/main.lua?");
-    client.print(postText);
-    client.println(" HTTP/1.1");
-
-    client.print("HOST: ");
-    client.println(serverName);
-
-    //client.println("Content-Type: application/x-www-form-urlencoded");
-    client.println("Connection: close");
-
-    //client.print("Content-Length: ");
-    //client.println(postText.length());
-
-    client.println();
-
-    boolean isGotReturn = false;
-    delay(serverWaitInterval);
-
-    if (client.available())
-    {
-      String currentLine = "";
-
-      int waitStartTime = millis();
-      while(client.available())
-      {
-        char recv = client.read();
-
-        // add incoming byte to end of line:
-        currentLine += recv;
-      }
-
-      Serial.println(currentLine);
-      isGotReturn = true;
-
-      if (currentLine.indexOf(SuccessReturnText) > 0)
-      {
-        Serial.println("OK");
-      }
-      else
-      {
-        Serial.println("Failed");
-      }
-    } 
-
-    if (isGotReturn == false)
-    {
-      Serial.println("Timeout");
-    }
-
+    Serial.println("connection success");
     client.stop();
   }
   else
   {
-    Serial.println('connection failed');
+    totalFailedCount++;
+    Serial.println("connection failed");
+  }
+  
+  if (totalFailedCount > 5)
+  {
+    ReBootSW();
   }
 }
+
+void ReBootSW()
+{
+  Serial.println("Reboot!");
+  digitalWrite(PIN_1_SWITCH, HIGH);
+  digitalWrite(PIN_2_SWITCH, HIGH);
+  
+  delay(10000);
+  resetFunc();
+}
+
+
+
+

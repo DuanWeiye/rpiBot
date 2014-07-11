@@ -16,15 +16,20 @@ String requestBuffer = "BUF ";
 byte mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x01 };
 
 // Assign default IP address for the controller:
-IPAddress ip(192, 168, 254, 2);
-IPAddress gateway(192, 168, 254, 1);
+IPAddress ip(172, 0, 0, 150);
+IPAddress gateway(172, 0, 0, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 // Server
-char serverName[] = "192.168.1.1";
+char serverName[] = "172.0.0.1";
 
 // Initialize the Ethernet
 EthernetServer server(80);
+
+unsigned long lastAttemptTime = 0;
+
+const unsigned long serverWaitInterval = 10000;
+const unsigned long requestAttemptInterval = 1000;
 
 const String maskCode = "ArduinoEnvNode";
 const String SuccessReturnText = "succ_ardu_openwrt";
@@ -68,6 +73,15 @@ void setup()
 
 void loop()
 { 
+  if (millis() - lastAttemptTime > requestAttemptInterval) 
+  {
+    // if you're not connected, and two minutes have passed since
+    // your last connection, then attempt to connect again:
+    PostToServer();
+    
+    lastAttemptTime = millis();
+  }
+  
   ListenForEthernetClients();
 }
 
@@ -230,6 +244,83 @@ void ListenForEthernetClients()
     webClient.stop();
   }
 } 
+
+void SyncWithServer()
+{
+  EthernetClient client;
+  
+  // attempt to connect, and wait a millisecond:
+  if (client.connect(serverName, 80)) 
+  {
+    String postText = maskCode + "," + myIP;
+    
+    Serial.print("Request String: ");
+    Serial.println(postText);
+    
+    Serial.print("Sending HTTP request...");
+  
+    // make HTTP request
+    client.print("GET /bin/queryCommand.lua?");
+    client.print(postText);
+    client.println(" HTTP/1.1");
+    
+    client.print("HOST: ");
+    client.println(serverName);
+    
+    //client.println("Content-Type: application/x-www-form-urlencoded");
+    client.println("Connection: close");
+    
+    //client.print("Content-Length: ");
+    //client.println(postText.length());
+    
+    client.println();
+    
+    boolean isGotReturn = false;
+    delay(serverWaitInterval);
+
+    if (client.available())
+    {
+      String currentLine = "";
+      
+      int waitStartTime = millis();
+      while(client.available())
+      {
+        char recv = client.read();
+
+        // add incoming byte to end of line:
+        currentLine += recv;
+      }
+      
+      Serial.println(currentLine);
+      isGotReturn = true;
+      
+      if (currentLine.indexOf(SuccessReturnText) > 0)
+      {
+        Serial.println("OK");
+        
+        requestSuccessedTimes++;
+      }
+      else
+      {
+        Serial.println("Failed");
+        
+        requestFailedTimes++;
+      }
+    } 
+    
+    if (isGotReturn == false)
+    {
+      Serial.println("Timeout");
+      requestFailedTimes++;
+    }
+    
+    client.stop();
+  }
+  else
+  {
+    Serial.println('connection failed');
+  }
+}   
 
 void LedFade(int R, int G, int B, int interval)
 {
