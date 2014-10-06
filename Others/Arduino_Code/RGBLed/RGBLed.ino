@@ -4,12 +4,13 @@ int DHTPin = 5;
 int LedRedPin = 4;
 int LedGreenPin = 3;
 int LedBluePin = 2;
+int SwitchPin = 6;
 
 dht11 DHT11;
 char buffer;  
 int connectStatus = 0;
 int freeCount = 0;
-String validChar = "RGBLPT!";
+String validChar = "RGBLPTHW!";
 
 void setup(){
      Serial.begin(9600);
@@ -17,6 +18,7 @@ void setup(){
      pinMode(LedRedPin, OUTPUT); 
      pinMode(LedGreenPin, OUTPUT); 
      pinMode(LedBluePin, OUTPUT); 
+     pinMode(SwitchPin, OUTPUT); 
      
      connectStatus = 0;
 }
@@ -37,7 +39,7 @@ void loop()
            buffer = Serial.read();
            if (buffer == 'A')
            {
-             LedRGB(255,0,255);
+             LedRGB(0,255,255);
              delay(300);
              LedRGB(0,0,0);
              connectStatus = 1;
@@ -48,12 +50,12 @@ void loop()
          waitCount++;
        }
  
-       LedFade(10);
+       LedFade(1);
      }
      
     if (Serial.available()) 
     {
-       freeCount =0;
+       freeCount = 0;
        buffer = Serial.read();
        
        if (validChar.indexOf(buffer) >= 0)
@@ -79,14 +81,16 @@ void loop()
            LedFade(5);
          }
          else if (buffer == 'T')
-         {
+         { 
            int hum = (int)DHT11.humidity;
            int tem = (int)DHT11.temperature;
-           char buf[17] = { 0 };
+           int smk = analogRead(0);
+           char buf[255] = { 0 };
            DHT11.read(DHTPin);
-           sprintf(buf, "H%.2dT%.2d|", hum, tem);
-           
-           if (hum == 0 && tem == 0)
+           sprintf(buf, "H%.2dT%.2dS%d|", hum, tem, smk);
+
+           Serial.print(buf);
+           if ((hum == 0 && tem == 0) && smk == 0)
            {
              LedRGB(255,0,0);
            }
@@ -100,7 +104,17 @@ void loop()
            
            Serial.print(buf);
          }
-         
+         else if (buffer == 'H')
+         {
+           LedRGB(255,0,0);
+           digitalWrite(SwitchPin, HIGH);
+         }
+         else if (buffer == 'W')
+         {
+           LedRGB(0,0,0);
+           digitalWrite(SwitchPin, LOW); 
+         }
+        
          Serial.print("O");
        }
        else
@@ -112,7 +126,7 @@ void loop()
     {
       if (freeCount >= 10)
       {
-        LedFade(2);
+        LedFade(1);
       }
       else
       {
@@ -123,7 +137,7 @@ void loop()
   }
   else
   {
-     LedFade(10);
+     LedFade(1);
      connectStatus = 0;
   }
 }
@@ -132,14 +146,14 @@ void LedFade(int fadeSpeed)
 {
   LedRGB(0,0,0);
   
-  for(int fadeValue = 0; fadeValue <= 250; fadeValue += fadeSpeed) { 
+  for(int fadeValue = 0; fadeValue <= 40; fadeValue += fadeSpeed) { 
     if (Serial.available()) return;
     analogWrite(LedGreenPin, fadeValue);
     delay(50);                            
   } 
   delay(400);
   
-  for(int fadeValue = 250 ; fadeValue >= 0; fadeValue -= fadeSpeed) { 
+  for(int fadeValue = 40 ; fadeValue >= 0; fadeValue -= fadeSpeed) { 
     if (Serial.available()) return;
     analogWrite(LedGreenPin, fadeValue);
     delay(50);                          
