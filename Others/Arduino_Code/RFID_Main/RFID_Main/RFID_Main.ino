@@ -13,19 +13,31 @@
 
 #include <SPI.h>
 #include <MFRC522.h>
+#include <SoftwareSerial.h>
 
 #define SS_PIN 10
 #define RST_PIN 9
 
-#define RETRY_MAX 3
+#define RETRY_MAX 4
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);        // Create MFRC522 instance.
+#define LCD_PORT_RX 2
+#define LCD_PORT_TX 3
+
+#define STRING_EMPTY "E#"
+#define STRING_NEW "N#"
+#define STRING_ALIVING "A#"
+
+SoftwareSerial LCDSerial(LCD_PORT_RX, LCD_PORT_TX);
+MFRC522 mfrc522(SS_PIN, RST_PIN);
 String activingCard = "";
 int livingCount = 0;
 
 void setup() 
 { 
   Serial.begin(9600);        // Initialize serial communications with the PC
+  LCDSerial.begin(9600);
+  ClearLCD();
+  
   SPI.begin();                // Init SPI bus
   mfrc522.PCD_Init();         // Init MFRC522 card
 }
@@ -35,30 +47,24 @@ void loop()
   delay(1000);
   
   // Look for new cards
-  if ( !mfrc522.PICC_IsNewCardPresent())
+  if ( !mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial())
   {
     livingCount--;
     if (livingCount <= 0)
     {
-      Serial.print("E#");
+      Serial.print(STRING_EMPTY);
       livingCount = 0;
       activingCard = "";
+      
+      ClearLCD();
+      LocateLCD(0,0);
+      PrintLCD(STRING_EMPTY);
     }
-    //Serial.println("No PICC_IsNewCardPresent");
-    return;
-  }
-  
-  // Select one of the cards
-  if ( !mfrc522.PICC_ReadCardSerial())
-  {
-    livingCount--;
-    if (livingCount <= 0)
+    else
     {
-      Serial.print("E#");
-      livingCount = 0;
-      activingCard = "";
+      LocateLCD(1,0);
+      PrintLCD(String(livingCount));
     }
-    //Serial.println("No PICC_ReadCardSerial");
     return;
   }
   
@@ -75,11 +81,111 @@ void loop()
   if (activingCard != newCard)
   {
     activingCard = newCard;
-    Serial.print("N#");
+    Serial.print(STRING_NEW);
     Serial.print(activingCard);
     Serial.print("#");
   }
-
+  else
+  {
+    Serial.print(STRING_ALIVING);
+  }
+  
   livingCount = RETRY_MAX;
+  
+  ClearLCD();
+  LocateLCD(0,0);
+  PrintLCD(STRING_NEW + activingCard + "#");
+  LocateLCD(1,0);
+  PrintLCD(String(livingCount));
+}
+
+
+int InitLCD()
+{
+  int ret = SendLCD("L;");
+  
+  if (ret == 1) // Force Error
+  {
+    return 0;
+  }
+  else
+  {
+    return 1;
+  }
+}
+
+
+int PrintLCD(String text)
+{
+  String buf = "ss" + text + ";";
+  return SendLCD(buf);
+}
+
+int LocateLCD(int x, int y)
+{
+  if (x < 0 || y < 0 || x > 15 || y > 15) return 1;
+
+  String buf = "sd" + (String)x + "," + (String)y + ";";
+  return SendLCD(buf);
+}
+
+int ClearLCD()
+{
+  return SendLCD("sc;");
+}
+
+int swBackLightLCD(int isTurnOn)
+{
+  if (isTurnOn == 1)
+  {
+    return SendLCD("sb1;");
+  }
+  else
+  {
+    return SendLCD("sb0;");
+  }
+}
+
+int SendLCD(String buf)
+{
+  int ret = 0;
+  int retryCount = 0;
+  char readBuf = NULL;
+  
+  LCDSerial.flush();
+  LCDSerial.print(buf);
+  
+  while (retryCount < 10)
+  {
+    retryCount++;
+    
+    if (LCDSerial.available() > 0) 
+    {
+      readBuf = (char)LCDSerial.read();
+      
+      if (readBuf == 'O')
+      {
+        ret = 0;
+        break;
+      }
+      else if (readBuf == 'E')
+      {
+        ret = 1;
+        delay(20);
+      }
+      else
+      {
+        ret = 2;
+        delay(20);
+      }
+    }
+    else
+    {
+      ret = 3;
+      delay(20);
+    }
+  }
+  
+  return ret;
 }
 
