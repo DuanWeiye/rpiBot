@@ -26,11 +26,15 @@
 #define STRING_EMPTY "E#"
 #define STRING_NEW "N#"
 #define STRING_ALIVING "A#"
+#define STRING_PAIR "!#"
 
 SoftwareSerial LCDSerial(LCD_PORT_RX, LCD_PORT_TX);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
+
 String activingCard = "";
 int livingCount = 0;
+unsigned long lastReadingTime = 0;
+unsigned long requestReadingInterval = 1000;
 
 void setup() 
 { 
@@ -44,59 +48,77 @@ void setup()
 
 void loop() 
 {
-  delay(1000);
-  
-  // Look for new cards
-  if ( !mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial())
+  if (Serial)
   {
-    livingCount--;
-    if (livingCount <= 0)
+     if (Serial.available()) 
+     {
+       if (Serial.read() == '!')
+       {
+         Serial.print(STRING_PAIR);
+       }
+       Serial.flush();
+     }
+  }
+  
+  if (millis() - lastReadingTime > requestReadingInterval || millis() - lastReadingTime < 0)
+  {
+    // Look for new cards
+    if ( !mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial())
     {
-      Serial.print(STRING_EMPTY);
-      livingCount = 0;
-      activingCard = "";
+      livingCount--;
+      if (livingCount <= 0)
+      {
+        Serial.print(STRING_EMPTY);
+        livingCount = 0;
+        activingCard = "";
+        
+        ClearLCD();
+        LocateLCD(0,0);
+        PrintLCD(STRING_EMPTY);
+      }
+      else
+      {
+        Serial.print(STRING_ALIVING);
+        
+        LocateLCD(1,0);
+        PrintLCD(String(livingCount));
+      }
+    }
+    else
+    { 
+      //Serial.print("Card Found: ");    //Dump UID
+      String newCard = "";
+      for (byte i = 0; i < mfrc522.uid.size; i++) 
+      {
+        //Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+        //Serial.print(mfrc522.uid.uidByte[i], HEX);
+        newCard += String(mfrc522.uid.uidByte[i], HEX);
+      }
+      newCard.toUpperCase();
+      
+      if (activingCard != newCard)
+      {
+        activingCard = newCard;
+        Serial.print(STRING_NEW);
+        Serial.print(activingCard);
+        Serial.print("#");
+      }
+      else
+      {
+        Serial.print(STRING_ALIVING);
+      }
+      
+      livingCount = RETRY_MAX;
       
       ClearLCD();
       LocateLCD(0,0);
-      PrintLCD(STRING_EMPTY);
-    }
-    else
-    {
+      PrintLCD(STRING_NEW + activingCard + "#");
       LocateLCD(1,0);
       PrintLCD(String(livingCount));
     }
-    return;
+    
+    lastReadingTime = millis();
   }
-  
-  //Serial.print("Card Found: ");    //Dump UID
-  String newCard = "";
-  for (byte i = 0; i < mfrc522.uid.size; i++) 
-  {
-    //Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
-    //Serial.print(mfrc522.uid.uidByte[i], HEX);
-    newCard += String(mfrc522.uid.uidByte[i], HEX);
-  }
-  newCard.toUpperCase();
-  
-  if (activingCard != newCard)
-  {
-    activingCard = newCard;
-    Serial.print(STRING_NEW);
-    Serial.print(activingCard);
-    Serial.print("#");
-  }
-  else
-  {
-    Serial.print(STRING_ALIVING);
-  }
-  
-  livingCount = RETRY_MAX;
-  
-  ClearLCD();
-  LocateLCD(0,0);
-  PrintLCD(STRING_NEW + activingCard + "#");
-  LocateLCD(1,0);
-  PrintLCD(String(livingCount));
 }
 
 
